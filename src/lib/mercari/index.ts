@@ -17,3 +17,25 @@ export async function searchSoldCached(
   cacheSet(key, result);
   return { ...result, fromCache: false };
 }
+
+/** จำนวนผลขั้นต่ำที่ถือว่าคำค้น "แคบแต่ยังพอใช้ได้" สำหรับการไล่บันได */
+const LADDER_MIN_LISTINGS = 5;
+
+/**
+ * ไล่ค้นจากคำเจาะจงสุด → กว้างสุด ใช้คำแรกที่ได้ผลถึงเกณฑ์
+ * ถ้าไม่มีคำไหนถึงเกณฑ์เลย ใช้คำที่ได้ผลเยอะสุด
+ */
+export async function searchSoldLadder(
+  candidates: string[],
+): Promise<SoldSearchResult & { fromCache: boolean; usedKeyword: string }> {
+  let best: (SoldSearchResult & { fromCache: boolean }) | null = null;
+  for (const keyword of candidates) {
+    const result = await searchSoldCached(keyword);
+    if (result.listings.length >= LADDER_MIN_LISTINGS) {
+      return { ...result, usedKeyword: keyword };
+    }
+    if (!best || result.listings.length > best.listings.length) best = result;
+  }
+  if (!best) throw new Error("ไม่มีคำค้นให้ลอง");
+  return { ...best, usedKeyword: best.keyword };
+}

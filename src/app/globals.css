@@ -265,6 +265,52 @@ button.link {
   align-items: center;
 }
 
+.candidate-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.candidate-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.candidate-chip {
+  padding: 0.25rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.candidate-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.match-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.match-exact {
+  background: var(--ok);
+  color: #fff;
+}
+
+.match-likely {
+  background: var(--warn);
+  color: #fff;
+}
+
 .keyword-row label {
   color: var(--muted);
   font-size: 0.9rem;

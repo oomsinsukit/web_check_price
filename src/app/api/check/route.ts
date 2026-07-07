@@ -4,7 +4,8 @@ import {
   IdentifyNotConfiguredError,
   DailyCapExceededError,
 } from "@/lib/identify";
-import { searchSoldCached } from "@/lib/mercari";
+import { rerankListings, type RerankResult } from "@/lib/identify/rerank";
+import { searchSoldLadder } from "@/lib/mercari";
 import { saveUpload } from "@/lib/uploads";
 
 const MAX_FILES = 3;
@@ -43,8 +44,19 @@ export async function POST(req: Request) {
 
   try {
     const identification = await identifyPlush(images, hint);
-    const search = await searchSoldCached(identification.keyword);
-    return NextResponse.json({ identification, search });
+    const search = await searchSoldLadder(identification.keywordCandidates);
+
+    // re-rank ล้มเหลวไม่ควรทำให้ทั้ง request พัง — แค่ไม่มีป้ายช่วยจิ้ม
+    let match: RerankResult = { exactIds: [], likelyIds: [] };
+    if (search.listings.length > 0) {
+      try {
+        match = await rerankListings(images, search.listings);
+      } catch (err) {
+        console.error("rerank failed:", err);
+      }
+    }
+
+    return NextResponse.json({ identification, search, match });
   } catch (err) {
     if (err instanceof IdentifyNotConfiguredError) {
       return NextResponse.json({ error: err.message }, { status: 503 });

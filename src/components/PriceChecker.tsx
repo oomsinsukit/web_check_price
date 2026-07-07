@@ -12,12 +12,15 @@ type SoldListing = {
 };
 
 type Identification = {
+  keywordCandidates: string[];
   keyword: string;
   character: string;
   franchise: string;
+  seriesName: string;
   productType: string;
   sizeCategory: string;
   manufacturer: string;
+  distinctiveFeatures: string[];
   confidence: "high" | "medium" | "low";
 };
 
@@ -43,9 +46,12 @@ export default function PriceChecker() {
   const [previews, setPreviews] = useState<string[]>([]);
   const [hint, setHint] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [candidates, setCandidates] = useState<string[]>([]);
   const [identification, setIdentification] = useState<Identification | null>(null);
   const [listings, setListings] = useState<SoldListing[] | null>(null);
   const [totalFound, setTotalFound] = useState(0);
+  const [exactIds, setExactIds] = useState<Set<string>>(new Set());
+  const [likelyIds, setLikelyIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fxRate, setFxRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,20 +78,6 @@ export default function PriceChecker() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function applyResults(data: {
-    identification?: Identification;
-    keyword: string;
-    listings: SoldListing[];
-    totalFound: number;
-  }) {
-    setIdentification(data.identification ?? null);
-    setKeyword(data.keyword);
-    setListings(data.listings);
-    setTotalFound(data.totalFound);
-    setSelected(new Set());
-    setError(null);
-  }
-
   async function submitPhotos() {
     if (files.length === 0 || loading) return;
     setLoading(true);
@@ -97,12 +89,14 @@ export default function PriceChecker() {
       const res = await fetch("/api/check", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      applyResults({
-        identification: data.identification,
-        keyword: data.identification.keyword,
-        listings: data.search.listings,
-        totalFound: data.search.totalFound,
-      });
+      setIdentification(data.identification);
+      setCandidates(data.identification.keywordCandidates ?? []);
+      setKeyword(data.search.usedKeyword ?? data.identification.keyword);
+      setListings(data.search.listings);
+      setTotalFound(data.search.totalFound);
+      setExactIds(new Set(data.match?.exactIds ?? []));
+      setLikelyIds(new Set(data.match?.likelyIds ?? []));
+      setSelected(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     } finally {
@@ -119,12 +113,13 @@ export default function PriceChecker() {
       const res = await fetch(`/api/search?q=${encodeURIComponent(kw)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      applyResults({
-        identification: identification ?? undefined,
-        keyword: kw,
-        listings: data.listings,
-        totalFound: data.totalFound,
-      });
+      setKeyword(kw);
+      setListings(data.listings);
+      setTotalFound(data.totalFound);
+      // ผลค้นชุดใหม่ — ป้าย match ของชุดเก่าใช้ไม่ได้แล้ว
+      setExactIds(new Set());
+      setLikelyIds(new Set());
+      setSelected(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
     } finally {
@@ -140,6 +135,14 @@ export default function PriceChecker() {
       return next;
     });
   }
+
+  // เรียง: AI ว่าตรงเป๊ะ → น่าจะใช่ → ที่เหลือ (ในกลุ่มคงลำดับเดิม)
+  const displayListings = useMemo(() => {
+    if (!listings) return null;
+    const rank = (l: SoldListing) =>
+      exactIds.has(l.id) ? 0 : likelyIds.has(l.id) ? 1 : 2;
+    return [...listings].sort((a, b) => rank(a) - rank(b));
+  }, [listings, exactIds, likelyIds]);
 
   const stats = useMemo(() => {
     if (!listings || listings.length === 0) return null;
@@ -239,7 +242,7 @@ export default function PriceChecker() {
       {error && <div className="error-box">⚠️ {error}</div>}
       {loading && <div className="loading-box">กำลังค้นราคาขายจริงจาก Mercari JP…</div>}
 
-      {listings && !loading && (
+      {displayListings && !loading && (
         <section className="results">
           {identification && (
             <div className="ident-row">
@@ -248,9 +251,11 @@ export default function PriceChecker() {
               </span>
               {[
                 identification.character,
+                identification.seriesName,
                 identification.productType,
                 identification.sizeCategory,
                 identification.manufacturer,
+                ...identification.distinctiveFeatures,
               ]
                 .filter(Boolean)
                 .map((chip) => (
@@ -280,6 +285,23 @@ export default function PriceChecker() {
             </button>
           </form>
 
+          {candidates.length > 1 && (
+            <div className="candidate-row">
+              <span className="candidate-label">ลองคำค้นระดับอื่น:</span>
+              {candidates.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`candidate-chip ${c === keyword ? "candidate-active" : ""}`}
+                  disabled={loading}
+                  onClick={() => searchKeyword(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          )}
+
           {stats ? (
             <div className="summary">
               <div className="summary-main">
@@ -304,10 +326,19 @@ export default function PriceChecker() {
             <div className="summary">ไม่พบรายการที่ขายแล้ว — ลองแก้คำค้นดูครับ</div>
           )}
 
-          {listings.length > 0 && (
+          {displayListings.length > 0 && (
             <>
               <div className="pick-note">
                 💡 จิ้มรูปที่ตรงกับของคุณ (เลือกได้หลายอัน) เพื่อคำนวณราคาเฉพาะรุ่นนั้น
+                {exactIds.size > 0 && (
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => setSelected(new Set(exactIds))}
+                  >
+                    เลือกตามที่ AI ชี้ ({exactIds.size})
+                  </button>
+                )}
                 {selected.size > 0 && (
                   <button type="button" className="link" onClick={() => setSelected(new Set())}>
                     ล้างที่เลือก ({selected.size})
@@ -315,7 +346,7 @@ export default function PriceChecker() {
                 )}
               </div>
               <div className="grid">
-                {listings.map((l) => (
+                {displayListings.map((l) => (
                   <div
                     key={l.id}
                     className={`card ${selected.has(l.id) ? "card-selected" : ""}`}
@@ -330,6 +361,12 @@ export default function PriceChecker() {
                     }}
                   >
                     {selected.has(l.id) && <span className="card-check">✓</span>}
+                    {exactIds.has(l.id) && (
+                      <span className="match-badge match-exact">AI ว่าตรงเป๊ะ</span>
+                    )}
+                    {likelyIds.has(l.id) && (
+                      <span className="match-badge match-likely">น่าจะใช่</span>
+                    )}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={l.thumbnailUrl} alt={l.name} loading="lazy" />
                     <div className="card-body">
