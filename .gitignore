@@ -1,0 +1,12 @@
+node_modules/
+.next/
+out/
+
+# runtime data — cache DB, uploaded images
+data/
+uploads/
+
+.env
+.env.*
+*.log
+.DS_Store
