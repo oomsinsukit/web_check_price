@@ -1,0 +1,19 @@
+{
+  "name": "web_check_price",
+  "version": "1.0.0",
+  "description": "เว็บเช็คราคาตุ๊กตาญี่ปุ่นมือ 2 จากรูปถ่าย — สำหรับนักสะสม/ผู้ขายชาวไทยที่อยากรู้ \"ราคาที่ขายได้จริง\" ก่อนซื้อเข้าหรือตั้งราคาขาย",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "jose": "^6.2.3"
+  }
+}
