@@ -1,19 +1,23 @@
 {
   "name": "web_check_price",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "private": true,
   "description": "เว็บเช็คราคาตุ๊กตาญี่ปุ่นมือ 2 จากรูปถ่าย — สำหรับนักสะสม/ผู้ขายชาวไทยที่อยากรู้ \"ราคาที่ขายได้จริง\" ก่อนซื้อเข้าหรือตั้งราคาขาย",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
   }
 }

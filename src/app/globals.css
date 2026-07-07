@@ -1,0 +1,27 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #faf7f2;
+  --fg: #2d2a26;
+  --muted: #8a8378;
+  --card: #ffffff;
+  --accent: #d9605c;
+  --border: #e8e2d8;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Segoe UI", "Noto Sans Thai", "Hiragino Sans", sans-serif;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
