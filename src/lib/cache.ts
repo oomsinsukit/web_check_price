@@ -36,3 +36,12 @@ export function cacheSet(key: string, value: unknown): void {
     "INSERT OR REPLACE INTO kv_cache (key, payload, fetched_at) VALUES (?, ?, ?)",
   ).run(key, JSON.stringify(value), Date.now());
 }
+
+/** นับจำนวนครั้งต่อวัน (ใช้ทำ Daily Cap) — คืนค่าหลังบวกแล้ว */
+export function incrDailyCounter(name: string): number {
+  const key = `counter:${name}:${new Date().toISOString().slice(0, 10)}`;
+  const current = cacheGet<number>(key, Number.MAX_SAFE_INTEGER) ?? 0;
+  const next = current + 1;
+  cacheSet(key, next);
+  return next;
+}
