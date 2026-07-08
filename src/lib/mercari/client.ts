@@ -93,6 +93,7 @@ export async function searchSold(
       "User-Agent": USER_AGENT,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {

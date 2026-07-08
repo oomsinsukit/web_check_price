@@ -9,7 +9,7 @@ export async function getJpyThbRate(): Promise<number | null> {
   if (cached) return cached;
 
   try {
-    const res = await fetch(FX_URL);
+    const res = await fetch(FX_URL, { signal: AbortSignal.timeout(5_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { rates?: { THB?: number } };
     const rate = data.rates?.THB;

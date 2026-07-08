@@ -16,6 +16,11 @@ const MAX_FILES = 3;
 const MAX_BYTES = 8 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic"]);
 
+// รูปน้อยลงในรอบ retry — รอบแรกเทียบละเอียดแล้ว รอบสองแค่พอกันตกหล่น
+const RETRY_RERANK_MAX = 8;
+// เกินนี้ไม่คุ้มจะยิง self-correction ต่อ (grounded call + rerank อีกรอบ ~30-50s)
+const SELF_CORRECTION_BUDGET_MS = 60_000;
+
 export async function POST(req: Request) {
   const form = await req.formData();
   const files = form.getAll("images").filter((f): f is File => f instanceof File);
@@ -46,6 +51,7 @@ export async function POST(req: Request) {
     saveUpload(img.data, img.mimeType);
   }
 
+  const startedAt = Date.now();
   try {
     const identification = await identifyPlush(images, hint);
     let search = await searchSoldLadder(identification.keywordCandidates);
@@ -60,8 +66,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // self-correction 1 รอบ: ไม่มีตัวตรงเลย → ให้โมเดลเสนอคำค้นใหม่แล้วลองอีกที
-    if (match.exactIds.length === 0) {
+    // self-correction 1 รอบ: ไม่เจออะไรที่พอไปวัดไปวางได้เลย (ไม่มีทั้ง exact และ likely)
+    // ยิง grounded call + rerank อีกรอบ — ของแพงและช้า เลยจำกัดทั้งเงื่อนไขและเวลาที่เหลือ
+    const noPlausibleMatch = match.exactIds.length === 0 && match.likelyIds.length === 0;
+    if (noPlausibleMatch && Date.now() - startedAt < SELF_CORRECTION_BUDGET_MS) {
       try {
         const tried = [...identification.keywordCandidates, search.usedKeyword];
         const better = await proposeBetterKeyword(images, search.listings, identification, tried);
@@ -69,8 +77,13 @@ export async function POST(req: Request) {
           console.log(`[check] self-correction retry with: ${better}`);
           const retrySearch = await searchSoldCached(better);
           if (retrySearch.listings.length > 0) {
-            const retryMatch = await rerankListings(images, retrySearch.listings, identification);
-            if (retryMatch.exactIds.length > 0) {
+            const retryMatch = await rerankListings(
+              images,
+              retrySearch.listings,
+              identification,
+              RETRY_RERANK_MAX,
+            );
+            if (retryMatch.exactIds.length > 0 || retryMatch.likelyIds.length > 0) {
               search = { ...retrySearch, usedKeyword: better };
               match = retryMatch;
               identification.keywordCandidates.push(better);

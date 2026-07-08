@@ -59,8 +59,21 @@ export default function PriceChecker() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fxRate, setFxRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingKind, setLoadingKind] = useState<"photo" | "search">("search");
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // การระบุตัวจากรูปมีขั้นค้น Google + เทียบภาพหลายรอบ อาจกิน 20-90 วิ
+  // นับเวลาให้ผู้ใช้เห็นว่ายังทำงานอยู่ ไม่ได้ค้าง
+  useEffect(() => {
+    if (!loading) {
+      setElapsedSec(0);
+      return;
+    }
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [loading]);
 
   useEffect(() => {
     fetch("/api/fx")
@@ -85,6 +98,7 @@ export default function PriceChecker() {
   async function submitPhotos() {
     if (files.length === 0 || loading) return;
     setLoading(true);
+    setLoadingKind("photo");
     setError(null);
     try {
       const form = new FormData();
@@ -112,6 +126,7 @@ export default function PriceChecker() {
     const kw = q.trim();
     if (!kw || loading) return;
     setLoading(true);
+    setLoadingKind("search");
     setError(null);
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(kw)}`);
@@ -244,7 +259,18 @@ export default function PriceChecker() {
       </section>
 
       {error && <div className="error-box">⚠️ {error}</div>}
-      {loading && <div className="loading-box">กำลังค้นราคาขายจริงจาก Mercari JP…</div>}
+      {loading && (
+        <div className="loading-box">
+          {loadingKind === "photo" ? (
+            <>
+              กำลังวิเคราะห์รูปด้วย AI (ค้น Google ยืนยันรุ่น + เทียบรูปกับของที่ขายแล้ว) —
+              อาจใช้เวลาถึง 1-2 นาทีสำหรับของที่หายาก ({elapsedSec}s)
+            </>
+          ) : (
+            <>กำลังค้นราคาขายจริงจาก Mercari JP… ({elapsedSec}s)</>
+          )}
+        </div>
+      )}
 
       {displayListings && !loading && (
         <section className="results">

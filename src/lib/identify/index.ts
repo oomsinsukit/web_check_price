@@ -67,6 +67,10 @@ export async function callGemini(
   const cap = Number(process.env.IDENTIFY_DAILY_CAP ?? 200);
   if (incrDailyCounter("identify") > cap) throw new DailyCapExceededError(cap);
 
+  // grounded call มีขั้นค้นเว็บจริงในตัว ช้ากว่าปกติ — ให้เวลามากกว่าแต่ต้องมีเพดาน
+  // กันเครื่องมันแฮงค์ไม่รู้จบถ้า Gemini ค้างจริงๆ
+  const timeoutMs = grounded ? 45_000 : 30_000;
+
   // free tier เจอ 503 (high demand) / 429 เป็นพักๆ — retry สั้นๆ ก่อนยอมแพ้
   let res: Response;
   for (let attempt = 0; ; attempt++) {
@@ -87,6 +91,7 @@ export async function callGemini(
             temperature: 0.2,
           },
         }),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
     if (res.ok || (res.status !== 503 && res.status !== 429) || attempt >= 2) break;

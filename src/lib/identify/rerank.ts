@@ -33,16 +33,17 @@ export async function rerankListings(
   userImages: ImageInput[],
   listings: SoldListing[],
   identification?: PlushIdentification,
+  maxItems: number = RERANK_MAX,
 ): Promise<RerankResult> {
-  const candidates = listings.slice(0, RERANK_MAX);
+  const candidates = listings.slice(0, maxItems);
 
   const thumbs = await Promise.all(
     candidates.map(async (l) => {
-      // รูปเต็มก่อน (แม่นกว่า) — พัง/ไม่มีค่อยถอยไป thumbnail
+      // รูปเต็มก่อน (แม่นกว่า) — พัง/ช้าเกินไปค่อยถอยไป thumbnail
       for (const url of [l.photoUrl, l.thumbnailUrl]) {
         if (!url) continue;
         try {
-          const res = await fetch(url);
+          const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
           if (!res.ok) continue;
           const mime = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
           return { data: Buffer.from(await res.arrayBuffer()), mimeType: mime };
