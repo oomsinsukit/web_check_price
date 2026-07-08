@@ -39,12 +39,28 @@ export class DailyCapExceededError extends Error {
   }
 }
 
-const MODEL = process.env.IDENTIFY_MODEL ?? "gemini-2.5-flash-lite";
+// 2.5-flash คือรุ่นเดียวที่ทดสอบแล้วว่า grounding ใช้ได้บน free tier ของ key นี้
+// (3.x โดน 429 ไม่มีโควต้าฟรี, 2.5-flash-lite เจอ 503 บ่อย) — probe เมื่อ 2026-07-08
+const MODEL = process.env.IDENTIFY_MODEL ?? "gemini-2.5-flash";
 
 export type ImageInput = { data: Buffer; mimeType: string };
 
-/** เรียก Gemini หนึ่งครั้ง (นับ Daily Cap ทุกครั้ง) — ใช้ร่วมกันทั้ง identify และ re-rank */
-export async function callGemini(parts: unknown[]): Promise<string> {
+/** ดึง JSON จากคำตอบที่อาจมี ```json fence หรือข้อความห่อ (grounded call ใช้ JSON mode ไม่ได้) */
+export function parseLenientJson<T>(text: string): T {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error(`no JSON object in: ${text.slice(0, 120)}`);
+  return JSON.parse(text.slice(start, end + 1)) as T;
+}
+
+/**
+ * เรียก Gemini หนึ่งครั้ง (นับ Daily Cap ทุกครั้ง) — ใช้ร่วมกันทั้ง identify และ re-rank
+ * grounded: เปิด Google Search tool ให้โมเดลค้นยืนยันเองได้ (แบบ Google Lens)
+ */
+export async function callGemini(
+  parts: unknown[],
+  { grounded = false }: { grounded?: boolean } = {},
+): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) throw new IdentifyNotConfiguredError();
 
@@ -64,8 +80,10 @@ export async function callGemini(parts: unknown[]): Promise<string> {
         },
         body: JSON.stringify({
           contents: [{ role: "user", parts }],
+          // grounding ใช้พร้อม JSON mode ไม่ได้ — grounded call ให้ตอบ JSON เป็น text แล้ว parse เอง
+          ...(grounded ? { tools: [{ google_search: {} }] } : {}),
           generationConfig: {
-            responseMimeType: "application/json",
+            ...(grounded ? {} : { responseMimeType: "application/json" }),
             temperature: 0.2,
           },
         }),
@@ -81,10 +99,23 @@ export async function callGemini(parts: unknown[]): Promise<string> {
   }
 
   const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    candidates?: {
+      content?: { parts?: { text?: string }[] };
+      groundingMetadata?: { webSearchQueries?: string[] };
+    }[];
   };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const candidate = data.candidates?.[0];
+  // grounded call อาจตอบเป็นหลาย part — ต่อรวมทุก text part
+  const text = candidate?.content?.parts
+    ?.map((p) => p.text ?? "")
+    .join("")
+    .trim();
   if (!text) throw new Error("Gemini returned no content");
+
+  const queries = candidate?.groundingMetadata?.webSearchQueries;
+  if (queries?.length) {
+    console.log(`[identify] grounded searches: ${queries.join(" / ")}`);
+  }
   return text;
 }
 
@@ -97,7 +128,9 @@ export function imagePart(img: ImageInput): unknown {
 const PROMPT = `You are an expert on Japanese plush toys and character goods sold on Mercari Japan.
 Identify the plush toy in the photo(s). Pay special attention to what distinguishes this exact variant/edition from similar plush of the same character: pose, facial expression, held items, outfit, and the prize/product series it belongs to.
 
-Respond in JSON with these fields:
+Use Google Search to verify the exact product/series name before answering — especially when you are not certain which prize series or release this is. Search in Japanese (e.g. "ちいかわ ぬいぐるみ さすまた プライズ") and prefer names that appear in actual marketplace listing titles.
+
+Respond ONLY with a JSON object (no prose around it) with these fields:
 - character: character name in Japanese as used on Mercari JP listings (e.g. "ちいかわ", "ハチワレ", "シナモロール")
 - franchise: series/brand in Japanese (e.g. "ちいかわ", "サンリオ", "ポケモン")
 - seriesName: the prize/product series name in Japanese if you recognize it (e.g. "討伐マスコット", "ぬいぱれっと", "もっちるおかお", "ふわもち"), else ""
@@ -121,10 +154,10 @@ export async function identifyPlush(
     text: hint ? `${PROMPT}\n\nUser hint (Thai): ${hint}` : PROMPT,
   });
 
-  const text = await callGemini(parts);
-  const parsed = JSON.parse(text) as Partial<PlushIdentification> & {
-    keywordCandidates?: unknown;
-  };
+  const text = await callGemini(parts, { grounded: true });
+  const parsed = parseLenientJson<Partial<PlushIdentification> & { keywordCandidates?: unknown }>(
+    text,
+  );
 
   const candidates = (Array.isArray(parsed.keywordCandidates)
     ? parsed.keywordCandidates

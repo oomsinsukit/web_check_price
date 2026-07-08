@@ -6,6 +6,8 @@ export type SoldListing = {
   /** วันที่ขาย (ประมาณจาก updated ของ listing) รูปแบบ YYYY-MM-DD */
   soldDate: string;
   thumbnailUrl: string;
+  /** รูปเต็มความละเอียดสูง (ถ้ามี) — ใช้ตอน AI เทียบภาพ */
+  photoUrl: string;
   itemUrl: string;
 };
 

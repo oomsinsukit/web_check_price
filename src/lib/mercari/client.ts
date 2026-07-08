@@ -30,6 +30,13 @@ function itemUrl(id: string): string {
     : `https://jp.mercari.com/shops/product/${id}`;
 }
 
+function photoUrl(id: string, thumbnailUrl: string): string {
+  // Mercari ปกติมีรูปเต็มตาม pattern ตายตัว (ยืนยันแล้ว) — Shops ใช้ thumbnail ไปก่อน
+  return /^m\d+$/.test(id)
+    ? `https://static.mercdn.net/item/detail/orig/photos/${id}_1.jpg`
+    : thumbnailUrl;
+}
+
 type RawItem = {
   id: string;
   name: string;
@@ -102,6 +109,7 @@ export async function searchSold(
       ? new Date(Number(it.updated) * 1000).toISOString().slice(0, 10)
       : "",
     thumbnailUrl: it.thumbnails?.[0] ?? "",
+    photoUrl: photoUrl(it.id, it.thumbnails?.[0] ?? ""),
     itemUrl: itemUrl(it.id),
   }));
 

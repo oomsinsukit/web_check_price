@@ -4,8 +4,12 @@ import {
   IdentifyNotConfiguredError,
   DailyCapExceededError,
 } from "@/lib/identify";
-import { rerankListings, type RerankResult } from "@/lib/identify/rerank";
-import { searchSoldLadder } from "@/lib/mercari";
+import {
+  rerankListings,
+  proposeBetterKeyword,
+  type RerankResult,
+} from "@/lib/identify/rerank";
+import { searchSoldCached, searchSoldLadder } from "@/lib/mercari";
 import { saveUpload } from "@/lib/uploads";
 
 const MAX_FILES = 3;
@@ -44,7 +48,7 @@ export async function POST(req: Request) {
 
   try {
     const identification = await identifyPlush(images, hint);
-    const search = await searchSoldLadder(identification.keywordCandidates);
+    let search = await searchSoldLadder(identification.keywordCandidates);
 
     // re-rank ล้มเหลวไม่ควรทำให้ทั้ง request พัง — แค่ไม่มีป้ายช่วยจิ้ม
     let match: RerankResult = { exactIds: [], likelyIds: [] };
@@ -53,6 +57,28 @@ export async function POST(req: Request) {
         match = await rerankListings(images, search.listings, identification);
       } catch (err) {
         console.error("rerank failed:", err);
+      }
+    }
+
+    // self-correction 1 รอบ: ไม่มีตัวตรงเลย → ให้โมเดลเสนอคำค้นใหม่แล้วลองอีกที
+    if (match.exactIds.length === 0) {
+      try {
+        const tried = [...identification.keywordCandidates, search.usedKeyword];
+        const better = await proposeBetterKeyword(images, search.listings, identification, tried);
+        if (better) {
+          console.log(`[check] self-correction retry with: ${better}`);
+          const retrySearch = await searchSoldCached(better);
+          if (retrySearch.listings.length > 0) {
+            const retryMatch = await rerankListings(images, retrySearch.listings, identification);
+            if (retryMatch.exactIds.length > 0) {
+              search = { ...retrySearch, usedKeyword: better };
+              match = retryMatch;
+              identification.keywordCandidates.push(better);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("self-correction failed:", err);
       }
     }
 

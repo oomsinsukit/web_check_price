@@ -4,12 +4,14 @@
 import {
   callGemini,
   imagePart,
+  parseLenientJson,
   type ImageInput,
   type PlushIdentification,
 } from "./index";
 import type { SoldListing } from "../mercari/types";
 
-const RERANK_MAX = 24;
+// ใช้รูป orig เต็มความละเอียด — จำกัดจำนวนชดเชย payload ที่ใหญ่ขึ้น
+const RERANK_MAX = 16;
 
 export type RerankResult = {
   /** listing ids ที่ AI มั่นใจว่าเป็นสินค้าชิ้นเดียวกัน */
@@ -36,14 +38,19 @@ export async function rerankListings(
 
   const thumbs = await Promise.all(
     candidates.map(async (l) => {
-      try {
-        const res = await fetch(l.thumbnailUrl);
-        if (!res.ok) return null;
-        const mime = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
-        return { data: Buffer.from(await res.arrayBuffer()), mimeType: mime };
-      } catch {
-        return null;
+      // รูปเต็มก่อน (แม่นกว่า) — พัง/ไม่มีค่อยถอยไป thumbnail
+      for (const url of [l.photoUrl, l.thumbnailUrl]) {
+        if (!url) continue;
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const mime = res.headers.get("content-type")?.split(";")[0] ?? "image/jpeg";
+          return { data: Buffer.from(await res.arrayBuffer()), mimeType: mime };
+        } catch {
+          // ลอง url ถัดไป
+        }
       }
+      return null;
     }),
   );
 
@@ -90,4 +97,42 @@ export async function rerankListings(
     exactIds,
     likelyIds: toIds(parsed.likely).filter((id) => !exactSet.has(id)),
   };
+}
+
+/**
+ * Self-correction: ผลค้นชุดปัจจุบันไม่มีตัวตรงเลย — ให้โมเดลดูรูปผู้ใช้
+ * เทียบกับชื่อ listing ที่เจอ แล้วเสนอคำค้นใหม่ (grounded: ค้น Google ยืนยันชื่อรุ่นได้)
+ * คืน null ถ้าไม่มีคำที่ดีกว่า
+ */
+export async function proposeBetterKeyword(
+  userImages: ImageInput[],
+  listings: SoldListing[],
+  identification: PlushIdentification,
+  triedKeywords: string[],
+): Promise<string | null> {
+  const titles = listings
+    .slice(0, RERANK_MAX)
+    .map((l, i) => `${i + 1}. ${l.name}`)
+    .join("\n");
+
+  const parts: unknown[] = userImages.map(imagePart);
+  parts.push({
+    text: `The photo(s) show a user's Japanese plush toy (identified as: ${identification.character || "?"} / series: ${identification.seriesName || "?"}).
+
+We searched Mercari JP with these queries but none of the results visually matched the exact variant:
+${triedKeywords.map((k) => `- ${k}`).join("\n")}
+
+Result titles we got:
+${titles}
+
+Use Google Search to figure out the correct Japanese product/series name for this exact plush, then propose ONE better Mercari JP search query (2-5 space-separated Japanese terms sellers would put in listing titles). It must differ from the tried queries.
+
+Respond ONLY with JSON: {"keyword": "..."} or {"keyword": null} if you cannot do better.`,
+  });
+
+  const text = await callGemini(parts, { grounded: true });
+  const parsed = parseLenientJson<{ keyword?: string | null }>(text);
+  const keyword = parsed.keyword?.trim();
+  if (!keyword || triedKeywords.includes(keyword)) return null;
+  return keyword;
 }
