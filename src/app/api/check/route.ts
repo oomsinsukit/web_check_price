@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     let match: RerankResult = { exactIds: [], likelyIds: [] };
     if (search.listings.length > 0) {
       try {
-        match = await rerankListings(images, search.listings);
+        match = await rerankListings(images, search.listings, identification);
       } catch (err) {
         console.error("rerank failed:", err);
       }

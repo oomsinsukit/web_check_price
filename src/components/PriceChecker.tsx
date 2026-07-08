@@ -21,6 +21,10 @@ type Identification = {
   sizeCategory: string;
   manufacturer: string;
   distinctiveFeatures: string[];
+  collab: string;
+  colorVariant: string;
+  tagText: string;
+  hasHangTag: boolean;
   confidence: "high" | "medium" | "low";
 };
 
@@ -252,14 +256,18 @@ export default function PriceChecker() {
               {[
                 identification.character,
                 identification.seriesName,
+                identification.collab,
+                identification.colorVariant,
                 identification.productType,
                 identification.sizeCategory,
                 identification.manufacturer,
                 ...identification.distinctiveFeatures,
+                identification.tagText && `🏷 ป้ายเขียนว่า: ${identification.tagText}`,
+                identification.hasHangTag && "มีป้ายห้อย",
               ]
                 .filter(Boolean)
                 .map((chip) => (
-                  <span key={chip} className="chip">
+                  <span key={String(chip)} className="chip">
                     {chip}
                   </span>
                 ))}
@@ -285,22 +293,38 @@ export default function PriceChecker() {
             </button>
           </form>
 
-          {candidates.length > 1 && (
-            <div className="candidate-row">
-              <span className="candidate-label">ลองคำค้นระดับอื่น:</span>
-              {candidates.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  className={`candidate-chip ${c === keyword ? "candidate-active" : ""}`}
-                  disabled={loading}
-                  onClick={() => searchKeyword(c)}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="candidate-row">
+            {candidates.length > 1 && (
+              <>
+                <span className="candidate-label">ลองคำค้นระดับอื่น:</span>
+                {candidates.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={`candidate-chip ${c === keyword ? "candidate-active" : ""}`}
+                    disabled={loading}
+                    onClick={() => searchKeyword(c)}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </>
+            )}
+            <button
+              type="button"
+              className={`candidate-chip ${keyword.includes("タグ付き") ? "candidate-active" : ""}`}
+              disabled={loading}
+              onClick={() =>
+                searchKeyword(
+                  keyword.includes("タグ付き")
+                    ? keyword.replace(/\s*タグ付き\s*/g, " ").trim()
+                    : `${keyword} タグ付き`,
+                )
+              }
+            >
+              🏷 เฉพาะมีป้าย (タグ付き)
+            </button>
+          </div>
 
           {stats ? (
             <div className="summary">

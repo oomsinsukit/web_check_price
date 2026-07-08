@@ -16,6 +16,14 @@ export type PlushIdentification = {
   manufacturer: string;
   /** จุดสังเกตที่แยกรุ่นนี้จากรุ่นอื่น เช่น 泣き顔, さすまた持ち */
   distinctiveFeatures: string[];
+  /** ชื่อ collab ถ้ามี เช่น サンリオコラボ */
+  collab: string;
+  /** สี/ชุดพิเศษของรุ่นนี้ ถ้ามี เช่น さくらいろ, ハロウィン */
+  colorVariant: string;
+  /** ข้อความชื่อสินค้า/ซีรีส์ที่อ่านได้จากป้ายห้อยในรูป (หลักฐานแม่นสุดถ้ามี) */
+  tagText: string;
+  /** เห็นป้ายห้อย (hang tag) ติดอยู่กับตัวตุ๊กตาไหม — มีผลต่อราคามือสอง */
+  hasHangTag: boolean;
   confidence: "high" | "medium" | "low";
 };
 
@@ -97,7 +105,11 @@ Respond in JSON with these fields:
 - sizeCategory: one of "マスコット" (small/keychain size), "ぬいぐるみ" (regular), "BIG", "超BIG", or "" if unclear
 - manufacturer: manufacturer if visible on tag (e.g. "FuRyu", "セガ", "San-X", "バンダイ"), else ""
 - distinctiveFeatures: up to 3 short Japanese phrases describing what visually distinguishes this exact variant (e.g. ["泣き顔", "さすまた持ち"]), [] if nothing stands out
-- keywordCandidates: 2-3 Mercari JP search queries ordered MOST SPECIFIC FIRST. Each 2-5 space-separated Japanese terms. The first should include series/variant details (e.g. "ちいかわ 討伐マスコット ハチワレ"), the last should be broad but safe (e.g. "ハチワレ ぬいぐるみ"). Only include terms sellers would actually put in listing titles.
+- collab: collaboration name in Japanese if this is a collab item (e.g. "サンリオコラボ", "ミッフィーコラボ"), else ""
+- colorVariant: special color/costume edition in Japanese if any (e.g. "さくらいろ", "ハロウィン", "パジャマ"), else ""
+- tagText: if a hang tag / paper tag is visible in any photo, transcribe the product or series name printed on it (Japanese) — read it carefully, this is the strongest evidence. Else ""
+- hasHangTag: true if a hang tag is visibly attached to the plush, else false
+- keywordCandidates: 2-3 Mercari JP search queries ordered MOST SPECIFIC FIRST. Each 2-5 space-separated Japanese terms. If tagText is readable, base the first candidate on it. Otherwise the first should include series/variant details (e.g. "ちいかわ 討伐マスコット ハチワレ"). The last should be broad but safe (e.g. "ハチワレ ぬいぐるみ"). Only include terms sellers would actually put in listing titles.
 - confidence: "high" if you are sure of the exact character and product type, "medium" if sure of character only, "low" if guessing`;
 
 export async function identifyPlush(
@@ -138,6 +150,10 @@ export async function identifyPlush(
     distinctiveFeatures: Array.isArray(parsed.distinctiveFeatures)
       ? parsed.distinctiveFeatures.filter((f): f is string => typeof f === "string")
       : [],
+    collab: parsed.collab ?? "",
+    colorVariant: parsed.colorVariant ?? "",
+    tagText: parsed.tagText ?? "",
+    hasHangTag: parsed.hasHangTag === true,
     confidence: parsed.confidence ?? "low",
   };
 }

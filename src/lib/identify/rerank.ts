@@ -1,7 +1,12 @@
 // AI re-rank — เทียบรูปของผู้ใช้กับ thumbnail ของ sold listings
 // เพื่อชี้ว่าตัวไหนคือ "สินค้าชิ้นเดียวกันเป๊ะๆ" (รุ่น/ท่าทาง/edition เดียวกัน)
 // เป็นตัวช่วยก่อน Match Confirmation — คนยังเป็นผู้ยืนยันขั้นสุดท้ายตาม ADR-0003
-import { callGemini, imagePart, type ImageInput } from "./index";
+import {
+  callGemini,
+  imagePart,
+  type ImageInput,
+  type PlushIdentification,
+} from "./index";
 import type { SoldListing } from "../mercari/types";
 
 const RERANK_MAX = 24;
@@ -25,6 +30,7 @@ Use the listing titles as extra evidence (they often name the prize series). Num
 export async function rerankListings(
   userImages: ImageInput[],
   listings: SoldListing[],
+  identification?: PlushIdentification,
 ): Promise<RerankResult> {
   const candidates = listings.slice(0, RERANK_MAX);
 
@@ -51,6 +57,23 @@ export async function rerankListings(
   });
 
   if (included.length === 0) return { exactIds: [], likelyIds: [] };
+
+  // บอกโมเดลว่ารุ่นของผู้ใช้มีจุดสังเกตอะไร — ช่วยให้เทียบภาพเฉียบขึ้น
+  const knownDetails = identification
+    ? [
+        identification.seriesName && `series: ${identification.seriesName}`,
+        identification.collab && `collab: ${identification.collab}`,
+        identification.colorVariant && `variant: ${identification.colorVariant}`,
+        identification.tagText && `tag text: ${identification.tagText}`,
+        identification.distinctiveFeatures.length > 0 &&
+          `features: ${identification.distinctiveFeatures.join(", ")}`,
+      ]
+        .filter(Boolean)
+        .join("; ")
+    : "";
+  if (knownDetails) {
+    parts.push({ text: `Known details of the user's item — ${knownDetails}` });
+  }
   parts.push({ text: PROMPT });
 
   const text = await callGemini(parts);
